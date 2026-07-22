@@ -4,6 +4,8 @@ import DashboardPage from "./pages/DashboardPage";
 import VehiclePage from "./pages/VehiclePage";
 import NavigationPage from "./pages/NavigationPage";
 import HistoryPage from "./pages/HistoryPage";
+import ModeSelectPage from "./pages/ModeSelectPage";
+import DriverHomePage from "./pages/DriverHomePage";
 
 import ExcelUpload from "./components/excel/ExcelUpload";
 
@@ -12,6 +14,17 @@ import {
   loadDriveHistory,
   saveDriveRecord,
 } from "./services/driveStorage";
+import {
+  getTodayDateKey,
+  saveAssignment,
+} from "./services/dispatchSync";
+import {
+  loadVehicleRoster,
+  saveVehicleRoster,
+} from "./services/vehicleStorage";
+
+const APP_MODE_STORAGE_KEY =
+  "gimcheon-transport-app-mode";
 
 const INITIAL_VEHICLES = [
   {
@@ -52,6 +65,20 @@ const CENTER_INFO = {
 };
 
 function App() {
+  const [appMode, setAppMode] = useState(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+
+    const stored = window.localStorage.getItem(
+      APP_MODE_STORAGE_KEY
+    );
+
+    return stored === "office" || stored === "driver"
+      ? stored
+      : null;
+  });
+
   const [currentPage, setCurrentPage] =
     useState("dashboard");
 
@@ -63,6 +90,10 @@ function App() {
     selectedVehicleId,
     setSelectedVehicleId,
   ] = useState("vehicle-1");
+
+  const [vehicleRoster, setVehicleRoster] = useState(
+    () => loadVehicleRoster(INITIAL_VEHICLES)
+  );
 
   const [people, setPeople] = useState([]);
   const [routeSummary, setRouteSummary] = useState(null);
@@ -103,12 +134,12 @@ function App() {
 
   const selectedVehicle = useMemo(() => {
     return (
-      INITIAL_VEHICLES.find(
+      vehicleRoster.find(
         (vehicle) =>
           vehicle.id === selectedVehicleId
-      ) || INITIAL_VEHICLES[0]
+      ) || vehicleRoster[0]
     );
-  }, [selectedVehicleId]);
+  }, [vehicleRoster, selectedVehicleId]);
 
   const currentRoute = useMemo(() => {
     const sessionRoutes =
@@ -134,7 +165,7 @@ function App() {
           selectedSession
         ] || {};
 
-      return INITIAL_VEHICLES.map(
+      return vehicleRoster.map(
         (vehicle) => {
           const route = Array.isArray(
             sessionRoutes[vehicle.id]
@@ -162,6 +193,7 @@ function App() {
     }, [
       routesBySessionAndVehicle,
       selectedSession,
+      vehicleRoster,
     ]);
 
   const handleDataLoaded = (
@@ -293,6 +325,26 @@ function App() {
             },
           })
         );
+
+        try {
+          await saveAssignment({
+            dateKey: getTodayDateKey(),
+            session: selectedSession,
+            vehicleId: selectedVehicleId,
+            vehicleName:
+              selectedVehicle?.name || "",
+            routeStops: result.routeStops,
+            totalDistance:
+              result.totalDistance,
+            totalDuration:
+              result.totalDuration,
+          });
+        } catch (syncError) {
+          console.error(
+            "배차 동기화 실패:",
+            syncError
+          );
+        }
 
         if (
           result.errorCount > 0
@@ -427,6 +479,47 @@ function App() {
     setCurrentPage("dashboard");
   };
 
+  const handleUpdateVehicleStaff = (
+    vehicleId,
+    { driverName, assistantName }
+  ) => {
+    setVehicleRoster((current) => {
+      const nextRoster = current.map((vehicle) =>
+        vehicle.id === vehicleId
+          ? {
+              ...vehicle,
+              driverName:
+                driverName ?? vehicle.driverName,
+              assistantName:
+                assistantName ??
+                vehicle.assistantName,
+            }
+          : vehicle
+      );
+
+      saveVehicleRoster(nextRoster);
+
+      return nextRoster;
+    });
+  };
+
+  const handleSelectMode = (mode) => {
+    setAppMode(mode);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        APP_MODE_STORAGE_KEY,
+        mode
+      );
+    }
+
+    setCurrentPage("dashboard");
+  };
+
+  const handleExitDriverMode = () => {
+    setAppMode(null);
+  };
+
   const handleBackFromNavigation =
     () => {
       setCurrentPage("vehicle");
@@ -451,6 +544,14 @@ function App() {
     );
   };
 
+  if (!appMode) {
+    return (
+      <ModeSelectPage
+        onSelectMode={handleSelectMode}
+      />
+    );
+  }
+
   if (
     currentPage ===
       "navigation" &&
@@ -472,6 +573,18 @@ function App() {
         }
         onComplete={
           handleCompleteDrive
+        }
+      />
+    );
+  }
+
+  if (appMode === "driver") {
+    return (
+      <DriverHomePage
+        vehicles={vehicleRoster}
+        onStartDrive={handleStartDrive}
+        onExitDriverMode={
+          handleExitDriverMode
         }
       />
     );
@@ -640,6 +753,8 @@ function App() {
     onVehicleSelect={setSelectedVehicleId}
     onStartPreparation={handleStartPreparation}
     onOpenHistory={handleOpenHistory}
+    onSwitchMode={handleExitDriverMode}
+    onUpdateVehicleStaff={handleUpdateVehicleStaff}
 />
       
     </div>

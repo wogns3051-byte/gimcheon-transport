@@ -17,6 +17,8 @@ function DashboardPage({
   onVehicleSelect,
   onStartPreparation,
   onOpenHistory,
+  onSwitchMode,
+  onUpdateVehicleStaff,
 }) {
   const [selectedSession, setSelectedSession] = useState(initialSession);
 
@@ -90,6 +92,14 @@ function DashboardPage({
         >
           📋 운행기록 보기
         </button>
+
+        <button
+          type="button"
+          onClick={() => onSwitchMode?.()}
+          style={styles.historyButton}
+        >
+          🔀 모드 전환
+        </button>
       </section>
 
       <section style={styles.content}>
@@ -135,6 +145,9 @@ function DashboardPage({
               vehicle={vehicle}
               selected={vehicle.id === currentVehicle?.id}
               onClick={() => onVehicleSelect?.(vehicle.id)}
+              onUpdateStaff={(staff) =>
+                onUpdateVehicleStaff?.(vehicle.id, staff)
+              }
             />
           ))}
         </div>
@@ -198,8 +211,106 @@ function SessionButton({ icon, title, description, selected, onClick }) {
   );
 }
 
-function VehicleCard({ vehicle, selected, onClick }) {
+function VehicleCard({
+  vehicle,
+  selected,
+  onClick,
+  onUpdateStaff,
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [driverNameDraft, setDriverNameDraft] =
+    useState(vehicle.driverName || "");
+  const [assistantNameDraft, setAssistantNameDraft] =
+    useState(vehicle.assistantName || "");
+
   const assignedCount = Number(vehicle.assignedCount) || 0;
+
+  const handleStartEdit = (event) => {
+    event.stopPropagation();
+    setDriverNameDraft(vehicle.driverName || "");
+    setAssistantNameDraft(vehicle.assistantName || "");
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = (event) => {
+    event.stopPropagation();
+    setIsEditing(false);
+  };
+
+  const handleSaveEdit = (event) => {
+    event.stopPropagation();
+
+    onUpdateStaff?.({
+      driverName: driverNameDraft.trim(),
+      assistantName: assistantNameDraft.trim(),
+    });
+
+    setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div
+        style={{
+          ...styles.vehicleCard,
+          ...styles.vehicleCardEditing,
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div style={styles.vehicleCardTop}>
+          <span style={styles.vehicleIcon}>🚐</span>
+        </div>
+
+        <strong style={styles.vehicleName}>
+          {vehicle.name}
+        </strong>
+
+        <label style={styles.editLabel}>
+          운전원 이름
+          <input
+            type="text"
+            value={driverNameDraft}
+            onChange={(event) =>
+              setDriverNameDraft(event.target.value)
+            }
+            placeholder="예: 김철수"
+            style={styles.editInput}
+          />
+        </label>
+
+        <label style={styles.editLabel}>
+          동승자 이름
+          <input
+            type="text"
+            value={assistantNameDraft}
+            onChange={(event) =>
+              setAssistantNameDraft(event.target.value)
+            }
+            placeholder="예: 이영희"
+            style={styles.editInput}
+          />
+        </label>
+
+        <div style={styles.editActions}>
+          <button
+            type="button"
+            onClick={handleCancelEdit}
+            style={styles.editCancelButton}
+          >
+            취소
+          </button>
+
+          <button
+            type="button"
+            onClick={handleSaveEdit}
+            style={styles.editSaveButton}
+          >
+            저장
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <button
@@ -233,6 +344,13 @@ function VehicleCard({ vehicle, selected, onClick }) {
         <span>운전원: {vehicle.driverName || "미지정"}</span>
         <span>동승자: {vehicle.assistantName || "미지정"}</span>
       </div>
+
+      <span
+        onClick={handleStartEdit}
+        style={styles.editTrigger}
+      >
+        ✏️ 이름 입력/수정
+      </span>
     </button>
   );
 }
@@ -381,6 +499,71 @@ const styles = {
   vehicleAssignedValue: { color: "#1f3c88", fontSize: "15px" },
  
   vehicleStaff: { display: "flex", flexDirection: "column", gap: "4px", color: "#64748b", fontSize: "10px" },
+
+  editTrigger: {
+    marginTop: "10px",
+    color: "#1f3c88",
+    fontSize: "10px",
+    fontWeight: "800",
+    textDecoration: "underline",
+    cursor: "pointer",
+  },
+
+  vehicleCardEditing: {
+    cursor: "default",
+    borderColor: "#1f3c88",
+    backgroundColor: "#eff6ff",
+  },
+
+  editLabel: {
+    marginTop: "8px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    color: "#475569",
+    fontSize: "10px",
+    fontWeight: "800",
+  },
+
+  editInput: {
+    height: "34px",
+    padding: "0 10px",
+    boxSizing: "border-box",
+    border: "1px solid #cbd5e1",
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#172033",
+  },
+
+  editActions: {
+    marginTop: "12px",
+    display: "flex",
+    gap: "8px",
+  },
+
+  editCancelButton: {
+    flex: "1",
+    minHeight: "36px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "8px",
+    backgroundColor: "#ffffff",
+    color: "#475569",
+    fontSize: "11px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
+
+  editSaveButton: {
+    flex: "1",
+    minHeight: "36px",
+    border: "none",
+    borderRadius: "8px",
+    backgroundColor: "#1f3c88",
+    color: "#ffffff",
+    fontSize: "11px",
+    fontWeight: "800",
+    cursor: "pointer",
+  },
  
   prepareCard: {
     maxWidth: "1180px",

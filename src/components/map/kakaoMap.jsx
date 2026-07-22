@@ -332,6 +332,18 @@ function createMarkerContent(stop, index) {
   const safeName = escapeHtml(stop.name || "경유지");
   const safeAddress = escapeHtml(stop.address || "주소 없음");
 
+  const segmentDistance = Number(stop.segmentDistance);
+  const segmentDuration = Number(stop.segmentDuration);
+
+  const hasSegmentInfo =
+    index > 0 && Number.isFinite(segmentDistance);
+
+  const segmentText = hasSegmentInfo
+    ? `이전 구간 ${segmentDistance.toFixed(
+        2
+      )}km · ${formatDuration(segmentDuration)}`
+    : "";
+
   return `
     <div style="
       position:relative;
@@ -403,6 +415,22 @@ function createMarkerContent(stop, index) {
           ${typeLabel}
         </span>
       </div>
+
+      ${
+        segmentText
+          ? `<div style="
+              margin-top:7px;
+              padding-top:7px;
+              border-top:1px dashed #e2e8f0;
+              color:#047857;
+              font-size:9px;
+              font-weight:800;
+              white-space:nowrap;
+            ">
+              🚗 ${segmentText}
+            </div>`
+          : ""
+      }
 
       <div style="
         position:absolute;
