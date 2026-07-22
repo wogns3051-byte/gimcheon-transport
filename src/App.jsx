@@ -1,0 +1,762 @@
+import { useMemo, useState } from "react";
+
+import DashboardPage from "./pages/DashboardPage";
+import VehiclePage from "./pages/VehiclePage";
+import NavigationPage from "./pages/NavigationPage";
+import HistoryPage from "./pages/HistoryPage";
+
+import ExcelUpload from "./components/excel/ExcelUpload";
+
+import { calculateSequentialRoute } from "./services/routeCalculator";
+import {
+  loadDriveHistory,
+  saveDriveRecord,
+} from "./services/driveStorage";
+
+const INITIAL_VEHICLES = [
+  {
+    id: "vehicle-1",
+    name: "1호차",
+    assignedCount: 0,
+    driverName: "",
+    assistantName: "",
+  },
+  {
+    id: "vehicle-2",
+    name: "2호차",
+    assignedCount: 0,
+    driverName: "",
+    assistantName: "",
+  },
+  {
+    id: "vehicle-3",
+    name: "3호차",
+    assignedCount: 0,
+    driverName: "",
+    assistantName: "",
+  },
+  {
+    id: "sub-vehicle",
+    name: "서브차량",
+    assignedCount: 0,
+    driverName: "",
+    assistantName: "",
+  },
+];
+
+const CENTER_INFO = {
+  id: "center",
+  type: "center",
+  name: "김천통합재가서비스센터",
+  address: "경상북도 김천시 김천로 92",
+};
+
+function App() {
+  const [currentPage, setCurrentPage] =
+    useState("dashboard");
+
+  const [selectedSession, setSelectedSession] =
+  
+    useState("morning");
+
+  const [
+    selectedVehicleId,
+    setSelectedVehicleId,
+  ] = useState("vehicle-1");
+
+  const [people, setPeople] = useState([]);
+  const [routeSummary, setRouteSummary] = useState(null);
+
+  const [
+    uploadFileName,
+    setUploadFileName,
+  ] = useState("");
+
+  const [
+    isCalculating,
+    setIsCalculating,
+  ] = useState(false);
+
+  const [
+    calculationProgress,
+    setCalculationProgress,
+  ] = useState("");
+
+  const [
+    calculationMessage,
+    setCalculationMessage,
+  ] = useState("");
+
+  const [
+    routesBySessionAndVehicle,
+    setRoutesBySessionAndVehicle,
+  ] = useState({
+    morning: createEmptyVehicleRouteMap(),
+    afternoon: createEmptyVehicleRouteMap(),
+  });
+
+  const [currentDrive, setCurrentDrive] =
+    useState(null);
+
+  const [completedDrives, setCompletedDrives] =
+    useState(() => loadDriveHistory());
+
+  const selectedVehicle = useMemo(() => {
+    return (
+      INITIAL_VEHICLES.find(
+        (vehicle) =>
+          vehicle.id === selectedVehicleId
+      ) || INITIAL_VEHICLES[0]
+    );
+  }, [selectedVehicleId]);
+
+  const currentRoute = useMemo(() => {
+    const sessionRoutes =
+      routesBySessionAndVehicle[
+        selectedSession
+      ] || {};
+
+    return Array.isArray(
+      sessionRoutes[selectedVehicleId]
+    )
+      ? sessionRoutes[selectedVehicleId]
+      : [];
+  }, [
+    routesBySessionAndVehicle,
+    selectedSession,
+    selectedVehicleId,
+  ]);
+
+  const vehiclesWithAssignedCount =
+    useMemo(() => {
+      const sessionRoutes =
+        routesBySessionAndVehicle[
+          selectedSession
+        ] || {};
+
+      return INITIAL_VEHICLES.map(
+        (vehicle) => {
+          const route = Array.isArray(
+            sessionRoutes[vehicle.id]
+          )
+            ? sessionRoutes[vehicle.id]
+            : [];
+
+          const uniquePersonIds =
+            new Set(
+              route
+                .filter(
+                  (stop) =>
+                    stop.type === "person"
+                )
+                .map((stop) => stop.id)
+            );
+
+          return {
+            ...vehicle,
+            assignedCount:
+              uniquePersonIds.size,
+          };
+        }
+      );
+    }, [
+      routesBySessionAndVehicle,
+      selectedSession,
+    ]);
+
+  const handleDataLoaded = (
+    nextPeople,
+    fileName
+  ) => {
+    const safePeople =
+      Array.isArray(nextPeople)
+        ? nextPeople
+        : [];
+
+    setPeople(safePeople);
+
+    setUploadFileName(
+      fileName || ""
+    );
+
+    setCalculationMessage("");
+    setCalculationProgress("");
+
+    if (safePeople.length === 0) {
+      setRoutesBySessionAndVehicle({
+        morning:
+          createEmptyVehicleRouteMap(),
+
+        afternoon:
+          createEmptyVehicleRouteMap(),
+      });
+    }
+  };
+
+  const handleStartPreparation = ({
+    session,
+    vehicleId,
+  }) => {
+    if (people.length === 0) {
+      window.alert(
+        "먼저 어르신 엑셀파일을 업로드해 주세요."
+      );
+
+      return;
+    }
+
+    setSelectedSession(session);
+    setSelectedVehicleId(vehicleId);
+
+    setCalculationMessage("");
+    setCalculationProgress("");
+
+    setCurrentPage("vehicle");
+  };
+
+  const handleRouteChange = (
+    nextRoute
+  ) => {
+    setRoutesBySessionAndVehicle(
+      (current) => ({
+        ...current,
+
+        [selectedSession]: {
+          ...(current[
+            selectedSession
+          ] || {}),
+
+          [selectedVehicleId]:
+            Array.isArray(nextRoute)
+              ? nextRoute
+              : [],
+        },
+      })
+    );
+
+    setCalculationMessage("");
+    setCalculationProgress("");
+  };
+
+  const handleCalculateRoute =
+    async (routeStops) => {
+      if (isCalculating) {
+        return;
+      }
+
+      try {
+        setIsCalculating(true);
+
+        setCalculationMessage(
+          "실제 자동차 도로 기준으로 거리와 시간을 계산하고 있습니다."
+        );
+
+        setCalculationProgress(
+          "주소를 확인하고 있습니다."
+        );
+
+        const result =
+          await calculateSequentialRoute(
+            routeStops,
+
+            ({
+              current,
+              total,
+              stage,
+            }) => {
+              if (
+                stage ===
+                "geocoding"
+              ) {
+                setCalculationProgress(
+                  `주소 좌표 확인 ${current}/${total}`
+                );
+              } else {
+                setCalculationProgress(
+                  `도로 경로 계산 ${current}/${total}`
+                );
+              }
+            }
+          );
+
+        setRoutesBySessionAndVehicle(
+          (current) => ({
+            ...current,
+
+            [selectedSession]: {
+              ...(current[
+                selectedSession
+              ] || {}),
+
+              [selectedVehicleId]:
+                result.routeStops,
+            },
+          })
+        );
+
+        if (
+          result.errorCount > 0
+        ) {
+          setCalculationMessage(
+            `계산 완료: 성공 ${result.successCount}구간, 오류 ${result.errorCount}구간`
+          );
+        } else {
+          setCalculationMessage(
+            `계산 완료: 총 ${result.totalDistance.toFixed(
+              2
+            )}km · ${formatDuration(
+              result.totalDuration
+            )}`
+          );
+        }
+
+        setCalculationProgress("");
+      } catch (error) {
+        setCalculationMessage(
+          `오류: ${
+            error instanceof Error
+              ? error.message
+              : "경로 계산에 실패했습니다."
+          }`
+        );
+
+        setCalculationProgress("");
+      } finally {
+        setIsCalculating(false);
+      }
+    };
+
+  const handleStartDrive = ({
+    session,
+    vehicle,
+    routeStops,
+  }) => {
+    if (
+      !Array.isArray(routeStops) ||
+      routeStops.length < 2
+    ) {
+      window.alert(
+        "운행 시작을 위해 경유지를 2곳 이상 추가해 주세요."
+      );
+
+      return;
+    }
+
+    const hasInvalidCoordinate =
+      routeStops.some((stop) => {
+        const latitude = Number(
+          stop.latitude
+        );
+
+        const longitude = Number(
+          stop.longitude
+        );
+
+        return (
+          !Number.isFinite(
+            latitude
+          ) ||
+          !Number.isFinite(
+            longitude
+          )
+        );
+      });
+
+    if (hasInvalidCoordinate) {
+      window.alert(
+        "좌표가 확인되지 않은 경유지가 있습니다. 실제도로 계산을 다시 실행해 주세요."
+      );
+
+      return;
+    }
+
+    setCurrentDrive({
+      session,
+      vehicle,
+      routeStops,
+      startedAt:
+        new Date().toISOString(),
+    });
+
+    setCurrentPage("navigation");
+  };
+
+  const handleCompleteDrive = (
+    driveResult
+  ) => {
+    const draftDrive = {
+      ...driveResult,
+
+      id: createDriveId(),
+
+      date: new Date().toISOString(),
+
+      sessionLabel:
+        driveResult.session ===
+        "afternoon"
+          ? "오후 송영"
+          : "오전 송영",
+
+      vehicleName:
+        driveResult.vehicle?.name ||
+        "운행차량",
+    };
+
+    const completedDrive =
+      saveDriveRecord(draftDrive);
+
+    setCompletedDrives(
+      (current) => [
+        completedDrive,
+        ...current,
+      ]
+    );
+
+    setCurrentDrive(null);
+
+    window.alert(
+      `${completedDrive.sessionLabel} · ${completedDrive.vehicleName}\n운행이 완료되었습니다.\n총거리 ${Number(
+        completedDrive.totalDistance
+      ).toFixed(
+        2
+      )}km · ${formatDuration(
+        completedDrive.totalDuration
+      )}`
+    );
+
+    setCurrentPage("dashboard");
+  };
+
+  const handleBackFromNavigation =
+    () => {
+      setCurrentPage("vehicle");
+    };
+
+  const handleOpenHistory = () => {
+    setCurrentPage("history");
+  };
+
+  const handleBackFromHistory =
+    () => {
+      setCurrentPage("dashboard");
+    };
+
+  const handleHistoryChange = (
+    nextHistory
+  ) => {
+    setCompletedDrives(
+      Array.isArray(nextHistory)
+        ? nextHistory
+        : []
+    );
+  };
+
+  if (
+    currentPage ===
+      "navigation" &&
+    currentDrive
+  ) {
+    return (
+      <NavigationPage
+        session={
+          currentDrive.session
+        }
+        vehicle={
+          currentDrive.vehicle
+        }
+        routeStops={
+          currentDrive.routeStops
+        }
+        onBack={
+          handleBackFromNavigation
+        }
+        onComplete={
+          handleCompleteDrive
+        }
+      />
+    );
+  }
+
+  if (currentPage === "history") {
+    return (
+      <HistoryPage
+        driveHistory={completedDrives}
+        onBack={handleBackFromHistory}
+        onHistoryChange={handleHistoryChange}
+      />
+    );
+  }
+
+  if (
+    currentPage === "vehicle"
+  ) {
+    return (
+      <VehiclePage
+        session={selectedSession}
+        vehicle={selectedVehicle}
+        people={people}
+        center={CENTER_INFO}
+        initialRoute={currentRoute}
+        isCalculating={
+          isCalculating
+        }
+        calculationProgress={
+          calculationProgress
+        }
+        calculationMessage={
+          calculationMessage
+        }
+        onBack={() => {
+          if (!isCalculating) {
+            setCurrentPage(
+              "dashboard"
+            );
+          }
+        }}
+        onRouteChange={
+          handleRouteChange
+        }
+        onCalculateRoute={
+          handleCalculateRoute
+        }
+        onStartDrive={
+          handleStartDrive
+        }
+      />
+    );
+  }
+
+  return (
+    <div>
+      <div style={styles.uploadArea}>
+        <div
+          style={styles.uploadInner}
+        >
+          <ExcelUpload
+            onDataLoaded={
+              handleDataLoaded
+            }
+          />
+
+          {people.length > 0 && (
+            <div
+              style={
+                styles.uploadSummary
+              }
+            >
+              <div>
+                <span
+                  style={
+                    styles.uploadLabel
+                  }
+                >
+                  불러온 파일
+                </span>
+
+                <strong
+                  style={
+                    styles.uploadValue
+                  }
+                >
+                  {uploadFileName ||
+                    "엑셀파일"}
+                </strong>
+              </div>
+
+              <span
+                style={
+                  styles.uploadCount
+                }
+              >
+                어르신{" "}
+                {people.length}명
+              </span>
+            </div>
+          )}
+
+          {completedDrives.length >
+            0 && (
+            <div
+              style={
+                styles.completedSummary
+              }
+            >
+              <span
+                style={
+                  styles.completedLabel
+                }
+              >
+                최근 완료 운행
+              </span>
+
+              <strong
+                style={
+                  styles.completedValue
+                }
+              >
+                {
+                  completedDrives[0]
+                    .sessionLabel
+                }{" "}
+                ·{" "}
+                {
+                  completedDrives[0]
+                    .vehicleName
+                }
+              </strong>
+
+              <span
+                style={
+                  styles.completedDetail
+                }
+              >
+                {Number(
+                  completedDrives[0]
+                    .totalDistance
+                ).toFixed(
+                  2
+                )}
+                km ·{" "}
+                {formatDuration(
+                  completedDrives[0]
+                    .totalDuration
+                )}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <DashboardPage
+    vehicles={vehiclesWithAssignedCount}
+    initialSession={selectedSession}
+    selectedVehicleId={selectedVehicleId}
+
+    routeStops={currentRoute}
+    calculationMessage={calculationMessage}
+    calculationProgress={calculationProgress}
+
+    onSessionChange={setSelectedSession}
+    onVehicleSelect={setSelectedVehicleId}
+    onStartPreparation={handleStartPreparation}
+    onOpenHistory={handleOpenHistory}
+/>
+      
+    </div>
+  );
+}
+
+function createEmptyVehicleRouteMap() {
+  return INITIAL_VEHICLES.reduce(
+    (result, vehicle) => ({
+      ...result,
+      [vehicle.id]: [],
+    }),
+    {}
+  );
+}
+
+function createDriveId() {
+  return `drive-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function formatDuration(duration) {
+  const minutes = Math.round(
+    Number(duration) || 0
+  );
+
+  if (minutes < 60) {
+    return `${minutes}분`;
+  }
+
+  const hours = Math.floor(
+    minutes / 60
+  );
+
+  const restMinutes =
+    minutes % 60;
+
+  return restMinutes > 0
+    ? `${hours}시간 ${restMinutes}분`
+    : `${hours}시간`;
+}
+
+const styles = {
+  uploadArea: {
+    padding: "24px 32px 0",
+    boxSizing: "border-box",
+    backgroundColor: "#f4f7fb",
+  },
+
+  uploadInner: {
+    maxWidth: "1180px",
+    margin: "0 auto",
+  },
+
+  uploadSummary: {
+    marginTop: "12px",
+    padding: "12px 15px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent:
+      "space-between",
+    gap: "10px",
+    flexWrap: "wrap",
+    backgroundColor: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "11px",
+  },
+
+  uploadLabel: {
+    display: "block",
+    marginBottom: "3px",
+    color: "#64748b",
+    fontSize: "10px",
+    fontWeight: "700",
+  },
+
+  uploadValue: {
+    color: "#1f3c88",
+    fontSize: "12px",
+  },
+
+  uploadCount: {
+    color: "#047857",
+    fontSize: "11px",
+    fontWeight: "800",
+  },
+
+  completedSummary: {
+    marginTop: "10px",
+    padding: "12px 15px",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+    backgroundColor: "#ecfdf5",
+    border: "1px solid #a7f3d0",
+    borderRadius: "11px",
+  },
+
+  completedLabel: {
+    color: "#047857",
+    fontSize: "10px",
+    fontWeight: "800",
+  },
+
+  completedValue: {
+    color: "#065f46",
+    fontSize: "12px",
+  },
+
+  completedDetail: {
+    marginLeft: "auto",
+    color: "#047857",
+    fontSize: "11px",
+    fontWeight: "800",
+  },
+};
+
+export default App;
