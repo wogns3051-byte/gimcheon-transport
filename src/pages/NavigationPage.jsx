@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import KakaoMap from "../components/map/kakaoMap";
+import { useIsMobile } from "../hooks/useIsMobile";
 import {
   getCurrentSegment,
   getNextDestination,
@@ -20,8 +22,13 @@ function NavigationPage({
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedStopIds, setCompletedStopIds] = useState([]);
+  const [stopArrivalTimes, setStopArrivalTimes] = useState(
+    {}
+  );
   const [message, setMessage] = useState("");
   const [isStartingNavi, setIsStartingNavi] = useState(false);
+
+  const isMobile = useIsMobile();
 
   const safeRouteStops = Array.isArray(routeStops)
     ? routeStops
@@ -31,6 +38,11 @@ function NavigationPage({
     session === "afternoon"
       ? "오후 송영"
       : "오전 송영";
+
+  const arrivalTimeLabel =
+    session === "afternoon"
+      ? "하차시간"
+      : "탑승시간";
 
   const currentStop =
     safeRouteStops[currentIndex] || null;
@@ -71,6 +83,12 @@ function NavigationPage({
   const validationResult = useMemo(() => {
     return validateNavigationRoute(
       safeRouteStops
+    );
+  }, [safeRouteStops]);
+
+  const fullPathPoints = useMemo(() => {
+    return safeRouteStops.flatMap((stop) =>
+      Array.isArray(stop.pathPoints) ? stop.pathPoints : []
     );
   }, [safeRouteStops]);
 
@@ -123,17 +141,27 @@ function NavigationPage({
     const destination =
       nextInformation.destination;
 
+    const arrivedAt =
+      new Date().toISOString();
+
     setCompletedStopIds((current) => [
       ...current,
       destination.stopId,
     ]);
+
+    setStopArrivalTimes((current) => ({
+      ...current,
+      [destination.stopId]: arrivedAt,
+    }));
 
     setCurrentIndex(
       nextInformation.nextIndex
     );
 
     setMessage(
-      `${destination.name} 도착 완료 처리되었습니다.`
+      `${destination.name} ${arrivalTimeLabel} ${formatClockTime(
+        arrivedAt
+      )}(으)로 기록되었습니다.`
     );
   };
 
@@ -157,6 +185,12 @@ function NavigationPage({
       )
     );
 
+    setStopArrivalTimes((current) => {
+      const next = { ...current };
+      delete next[previousStop?.stopId];
+      return next;
+    });
+
     setMessage(
       "이전 경유지로 돌아갔습니다."
     );
@@ -170,10 +204,18 @@ function NavigationPage({
       return;
     }
 
+    const routeStopsWithArrivalTimes =
+      safeRouteStops.map((stop) => ({
+        ...stop,
+        actualArrivalTime:
+          stopArrivalTimes[stop.stopId] ||
+          null,
+      }));
+
     const result = {
       session,
       vehicle,
-      routeStops: safeRouteStops,
+      routeStops: routeStopsWithArrivalTimes,
       completedAt:
         new Date().toISOString(),
       totalDistance:
@@ -305,7 +347,14 @@ function NavigationPage({
         </div>
       )}
 
-      <section style={styles.driveSection}>
+      <section
+        style={{
+          ...styles.driveSection,
+          ...(isMobile
+            ? styles.driveSectionMobile
+            : {}),
+        }}
+      >
         <div style={styles.currentCard}>
           <span style={styles.cardLabel}>
             현재 위치
@@ -469,6 +518,14 @@ function NavigationPage({
         </div>
       </section>
 
+      <section style={styles.mapSection}>
+        <KakaoMap
+          routeStops={safeRouteStops}
+          fullPathPoints={fullPathPoints}
+          height={380}
+        />
+      </section>
+
       <section style={styles.actionSection}>
         <button
           type="button"
@@ -602,6 +659,25 @@ function NavigationPage({
                       {stop.address ||
                         "주소 없음"}
                     </span>
+
+                    {stop.type !==
+                      "center" &&
+                      stopArrivalTimes[
+                        stop.stopId
+                      ] && (
+                        <span
+                          style={
+                            styles.routeArrivalTime
+                          }
+                        >
+                          {arrivalTimeLabel}{" "}
+                          {formatClockTime(
+                            stopArrivalTimes[
+                              stop.stopId
+                            ]
+                          )}
+                        </span>
+                      )}
                   </div>
 
                   <span
@@ -659,6 +735,23 @@ function NavigationPage({
       </section>
     </main>
   );
+}
+
+function formatClockTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function calculateTotalDistance(
@@ -890,6 +983,19 @@ const styles = {
       "minmax(0, 1fr) 50px minmax(0, 1fr)",
     gap: "12px",
     alignItems: "stretch",
+  },
+
+  driveSectionMobile: {
+    gridTemplateColumns: "1fr",
+  },
+
+  mapSection: {
+    maxWidth: "1180px",
+    margin: "0 auto 16px",
+    borderRadius: "17px",
+    overflow: "hidden",
+    backgroundColor: "#ffffff",
+    border: "1px solid #e2e8f0",
   },
 
   currentCard: {
@@ -1139,6 +1245,13 @@ const styles = {
     fontSize: "9px",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+
+  routeArrivalTime: {
+    marginTop: "2px",
+    color: "#047857",
+    fontSize: "9px",
+    fontWeight: "800",
   },
 
   routeStatus: {

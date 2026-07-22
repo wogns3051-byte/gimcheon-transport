@@ -4,6 +4,7 @@ import {
   clearDriveHistory,
   deleteDriveRecord,
 } from "../services/driveStorage";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 function HistoryPage({
   driveHistory = [],
@@ -21,6 +22,8 @@ function HistoryPage({
 
   const [selectedRecord, setSelectedRecord] =
     useState(null);
+
+  const isMobile = useIsMobile();
 
   const safeHistory = Array.isArray(driveHistory)
     ? driveHistory
@@ -188,6 +191,11 @@ function HistoryPage({
       ? record.routeStops
       : [];
 
+    const arrivalTimeLabel =
+      record.session === "afternoon"
+        ? "하차시간"
+        : "탑승시간";
+
     const rowsHtml = routeStops
       .map((stop, index) => {
         const segment =
@@ -200,6 +208,14 @@ function HistoryPage({
               ).toFixed(2)}km / ${formatDuration(
                 stop.segmentDuration
               )}`
+            : "-";
+
+        const arrivalTime =
+          stop.type !== "center" &&
+          stop.actualArrivalTime
+            ? formatClockTime(
+                stop.actualArrivalTime
+              )
             : "-";
 
         return `
@@ -217,6 +233,7 @@ function HistoryPage({
               stop.address || "주소 없음"
             )}</td>
             <td>${segment}</td>
+            <td>${arrivalTime}</td>
           </tr>
         `;
       })
@@ -291,6 +308,9 @@ function HistoryPage({
                 <th>이름</th>
                 <th>주소</th>
                 <th>이전 구간(거리/시간)</th>
+                <th>${escapeHtml(
+                  arrivalTimeLabel
+                )}</th>
               </tr>
             </thead>
             <tbody>
@@ -350,7 +370,14 @@ function HistoryPage({
         </button>
       </header>
 
-      <section style={styles.filterSection}>
+      <section
+        style={{
+          ...styles.filterSection,
+          ...(isMobile
+            ? styles.filterSectionMobile
+            : {}),
+        }}
+      >
         <div style={styles.filterGroup}>
           <label style={styles.filterLabel}>
             운행일
@@ -436,7 +463,14 @@ function HistoryPage({
         </button>
       </section>
 
-      <section style={styles.summaryGrid}>
+      <section
+        style={{
+          ...styles.summaryGrid,
+          ...(isMobile
+            ? styles.summaryGridMobile
+            : {}),
+        }}
+      >
         <SummaryCard
           label="운행횟수"
           value={`${statistics.totalDriveCount}회`}
@@ -496,6 +530,7 @@ function HistoryPage({
                 <HistoryCard
                   key={record.id}
                   record={record}
+                  isMobile={isMobile}
                   onOpen={() =>
                     setSelectedRecord(record)
                   }
@@ -549,7 +584,14 @@ function HistoryPage({
               </button>
             </div>
 
-            <div style={styles.detailSummary}>
+            <div
+              style={{
+                ...styles.detailSummary,
+                ...(isMobile
+                  ? styles.detailSummaryMobile
+                  : {}),
+              }}
+            >
               <DetailItem
                 label="운행일"
                 value={formatDateTime(
@@ -694,6 +736,24 @@ function HistoryPage({
                                 )}
                               </span>
                             )}
+
+                          {stop.type !==
+                            "center" &&
+                            stop.actualArrivalTime && (
+                              <span
+                                style={
+                                  styles.routeArrivalTime
+                                }
+                              >
+                                {selectedRecord.session ===
+                                "afternoon"
+                                  ? "하차시간"
+                                  : "탑승시간"}{" "}
+                                {formatClockTime(
+                                  stop.actualArrivalTime
+                                )}
+                              </span>
+                            )}
                         </div>
                       </div>
                     )
@@ -750,6 +810,7 @@ function HistoryPage({
 
 function HistoryCard({
   record,
+  isMobile,
   onOpen,
   onDelete,
 }) {
@@ -770,7 +831,14 @@ function HistoryCard({
       : 0;
 
   return (
-    <article style={styles.historyCard}>
+    <article
+      style={{
+        ...styles.historyCard,
+        ...(isMobile
+          ? styles.historyCardMobile
+          : {}),
+      }}
+    >
       <div style={styles.historyCardDate}>
         <span style={styles.historyDay}>
           {formatDay(
@@ -942,6 +1010,23 @@ function formatDuration(duration) {
   return restMinutes > 0
     ? `${hours}시간 ${restMinutes}분`
     : `${hours}시간`;
+}
+
+function formatClockTime(value) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function formatDateTime(value) {
@@ -1134,6 +1219,10 @@ const styles = {
     borderRadius: "15px",
   },
 
+  filterSectionMobile: {
+    gridTemplateColumns: "1fr",
+  },
+
   filterGroup: {
     display: "flex",
     flexDirection: "column",
@@ -1175,6 +1264,11 @@ const styles = {
     gridTemplateColumns:
       "repeat(6, minmax(0, 1fr))",
     gap: "9px",
+  },
+
+  summaryGridMobile: {
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
   },
 
   summaryCard: {
@@ -1244,6 +1338,10 @@ const styles = {
     backgroundColor: "#f8fafc",
     border: "1px solid #e2e8f0",
     borderRadius: "12px",
+  },
+
+  historyCardMobile: {
+    flexWrap: "wrap",
   },
 
   historyCardDate: {
@@ -1419,6 +1517,11 @@ const styles = {
     gap: "8px",
   },
 
+  detailSummaryMobile: {
+    gridTemplateColumns:
+      "repeat(2, minmax(0, 1fr))",
+  },
+
   detailItem: {
     padding: "11px",
     display: "flex",
@@ -1499,6 +1602,13 @@ const styles = {
 
   routeSegment: {
     color: "#047857",
+    fontSize: "9px",
+    fontWeight: "800",
+  },
+
+  routeArrivalTime: {
+    marginTop: "2px",
+    color: "#1f3c88",
     fontSize: "9px",
     fontWeight: "800",
   },
