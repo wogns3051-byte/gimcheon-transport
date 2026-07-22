@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 import DashboardPage from "./pages/DashboardPage";
 import VehiclePage from "./pages/VehiclePage";
@@ -13,6 +13,7 @@ import { calculateSequentialRoute } from "./services/routeCalculator";
 import {
   loadDriveHistory,
   saveDriveRecord,
+  saveDriveHistory,
 } from "./services/driveStorage";
 import {
   getTodayDateKey,
@@ -22,6 +23,10 @@ import {
   loadVehicleRoster,
   saveVehicleRoster,
 } from "./services/vehicleStorage";
+import {
+  saveDriveRecordToCloud,
+  subscribeDriveHistory,
+} from "./services/driveHistorySync";
 
 const APP_MODE_STORAGE_KEY =
   "gimcheon-transport-app-mode";
@@ -131,6 +136,27 @@ function App() {
 
   const [completedDrives, setCompletedDrives] =
     useState(() => loadDriveHistory());
+
+  useEffect(() => {
+    const unsubscribe = subscribeDriveHistory(
+      (records) => {
+        const normalized =
+          saveDriveHistory(records);
+
+        setCompletedDrives(normalized);
+      },
+      (error) => {
+        console.error(
+          "운행기록 동기화 실패:",
+          error
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
 
   const selectedVehicle = useMemo(() => {
     return (
@@ -456,6 +482,15 @@ function App() {
 
     const completedDrive =
       saveDriveRecord(draftDrive);
+
+    saveDriveRecordToCloud(
+      completedDrive
+    ).catch((error) => {
+      console.error(
+        "운행기록 클라우드 저장 실패:",
+        error
+      );
+    });
 
     setCompletedDrives(
       (current) => [

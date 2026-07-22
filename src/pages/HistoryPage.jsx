@@ -4,6 +4,10 @@ import {
   clearDriveHistory,
   deleteDriveRecord,
 } from "../services/driveStorage";
+import {
+  clearDriveHistoryInCloud,
+  deleteDriveRecordFromCloud,
+} from "../services/driveHistorySync";
 import { useIsMobile } from "../hooks/useIsMobile";
 
 function HistoryPage({
@@ -123,6 +127,15 @@ function HistoryPage({
 
     onHistoryChange?.(nextHistory);
 
+    deleteDriveRecordFromCloud(
+      record.id
+    ).catch((error) => {
+      console.error(
+        "운행기록 클라우드 삭제 실패:",
+        error
+      );
+    });
+
     if (
       selectedRecord?.id === record.id
     ) {
@@ -148,6 +161,15 @@ function HistoryPage({
 
     onHistoryChange?.(nextHistory);
     setSelectedRecord(null);
+
+    clearDriveHistoryInCloud(
+      safeHistory
+    ).catch((error) => {
+      console.error(
+        "운행기록 클라우드 전체삭제 실패:",
+        error
+      );
+    });
   };
 
   const handleResetFilters = () => {
