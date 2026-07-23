@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import KakaoMap from "../components/map/kakaoMap";
+import { calculateSequentialRoute } from "../services/routeCalculator";
+import { suggestVisitOrder } from "../services/routeOptimizer";
 
 const DEFAULT_CENTER = {
   id: "center",
@@ -63,6 +65,13 @@ function VehiclePage({
   const [selectedPersonIds, setSelectedPersonIds] =
     useState([]);
   const [searchText, setSearchText] = useState("");
+
+  const [aiPreviewLoading, setAiPreviewLoading] =
+    useState(false);
+  const [aiPreviewResult, setAiPreviewResult] =
+    useState(null);
+  const [aiPreviewError, setAiPreviewError] =
+    useState("");
 
   const sessionLabel =
     session === "afternoon"
@@ -147,6 +156,8 @@ function VehiclePage({
 
     setSelectedPersonIds([]);
     setSearchText("");
+    setAiPreviewResult(null);
+    setAiPreviewError("");
     setShowPeopleModal(true);
   };
 
@@ -183,6 +194,101 @@ function VehiclePage({
     updateRoute([...routeStops, ...newStops]);
     setShowPeopleModal(false);
     setSelectedPersonIds([]);
+  };
+
+  const handleAiPreview = async () => {
+    if (selectedPersonIds.length === 0) {
+      window.alert(
+        "먼저 예상경로를 볼 어르신을 선택해 주세요."
+      );
+      return;
+    }
+
+    const selectedPeopleList = safePeople.filter(
+      (person) =>
+        selectedPersonIds.includes(person.id)
+    );
+
+    const startPoint =
+      routeStops.length > 0
+        ? routeStops[routeStops.length - 1]
+        : center;
+
+    try {
+      setAiPreviewLoading(true);
+      setAiPreviewError("");
+      setAiPreviewResult(null);
+
+      const orderedPeople =
+        await suggestVisitOrder(
+          startPoint,
+          selectedPeopleList
+        );
+
+      const calcInput = [
+        {
+          ...startPoint,
+          stopId: "ai-preview-start",
+        },
+        ...orderedPeople.map((person) => ({
+          ...person,
+          stopId: createStopId(),
+          type: "person",
+        })),
+      ];
+
+      const result =
+        await calculateSequentialRoute(
+          calcInput
+        );
+
+      setAiPreviewResult({
+        orderedStops:
+          result.routeStops.slice(1),
+        totalDistance: result.totalDistance,
+        totalDuration: result.totalDuration,
+        errorCount: result.errorCount,
+      });
+    } catch (error) {
+      setAiPreviewError(
+        error instanceof Error
+          ? error.message
+          : "AI 추천 순서 계산에 실패했습니다."
+      );
+    } finally {
+      setAiPreviewLoading(false);
+    }
+  };
+
+  const handleAcceptAiOrder = () => {
+    if (
+      !aiPreviewResult ||
+      aiPreviewResult.orderedStops.length === 0
+    ) {
+      return;
+    }
+
+    const newStops =
+      aiPreviewResult.orderedStops.map(
+        (stop) => ({
+          ...stop,
+          stopId: createStopId(),
+          type: "person",
+          segmentDistance: null,
+          segmentDuration: null,
+          pathPoints: [],
+          scheduledTime:
+            (session === "afternoon"
+              ? stop.defaultAlightingTime
+              : stop.defaultBoardingTime) ||
+            "",
+        })
+      );
+
+    updateRoute([...routeStops, ...newStops]);
+    setShowPeopleModal(false);
+    setSelectedPersonIds([]);
+    setAiPreviewResult(null);
   };
 
   const handleMoveStop = (stopId, direction) => {
@@ -651,6 +757,130 @@ function VehiclePage({
               )}
             </div>
 
+            {aiPreviewLoading && (
+              <div
+                style={
+                  styles.aiPreviewStatus
+                }
+              >
+                ⏳ AI가 예상경로를
+                계산하고 있습니다...
+              </div>
+            )}
+
+            {aiPreviewError && (
+              <div
+                style={{
+                  ...styles.aiPreviewStatus,
+                  ...styles.aiPreviewError,
+                }}
+              >
+                ⚠️ {aiPreviewError}
+              </div>
+            )}
+
+            {aiPreviewResult && (
+              <div
+                style={styles.aiPreviewPanel}
+              >
+                <div
+                  style={
+                    styles.aiPreviewHeader
+                  }
+                >
+                  <strong>
+                    🤖 AI 추천 방문순서
+                  </strong>
+
+                  <span
+                    style={
+                      styles.aiPreviewSummary
+                    }
+                  >
+                    예상 총거리{" "}
+                    {aiPreviewResult.totalDistance.toFixed(
+                      2
+                    )}
+                    km · 예상 총시간{" "}
+                    {formatDuration(
+                      aiPreviewResult.totalDuration
+                    )}
+                  </span>
+                </div>
+
+                <div
+                  style={
+                    styles.aiPreviewList
+                  }
+                >
+                  {aiPreviewResult.orderedStops.map(
+                    (stop, index) => (
+                      <div
+                        key={
+                          stop.stopId ||
+                          index
+                        }
+                        style={
+                          styles.aiPreviewItem
+                        }
+                      >
+                        <span
+                          style={
+                            styles.aiPreviewIndex
+                          }
+                        >
+                          {index + 1}
+                        </span>
+
+                        <div
+                          style={
+                            styles.aiPreviewItemInfo
+                          }
+                        >
+                          <strong>
+                            {stop.name ||
+                              "경유지"}
+                          </strong>
+
+                          <span
+                            style={
+                              styles.aiPreviewItemMeta
+                            }
+                          >
+                            {Number.isFinite(
+                              Number(
+                                stop.segmentDistance
+                              )
+                            )
+                              ? `${Number(
+                                  stop.segmentDistance
+                                ).toFixed(
+                                  2
+                                )}km · ${formatDuration(
+                                  stop.segmentDuration
+                                )}`
+                              : "구간 계산 실패"}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleAcceptAiOrder
+                  }
+                  style={
+                    styles.aiPreviewAcceptButton
+                  }
+                >
+                  ✓ 이 순서로 경로에 추가
+                </button>
+              </div>
+            )}
+
             <div style={styles.modalActions}>
               <button
                 type="button"
@@ -660,6 +890,24 @@ function VehiclePage({
                 style={styles.cancelButton}
               >
                 취소
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAiPreview}
+                disabled={
+                  selectedPersonIds.length ===
+                    0 || aiPreviewLoading
+                }
+                style={{
+                  ...styles.aiPreviewButton,
+                  ...(selectedPersonIds.length ===
+                    0 || aiPreviewLoading
+                    ? styles.disabledButton
+                    : {}),
+                }}
+              >
+                🤖 AI 추천 예상경로 보기
               </button>
 
               <button
@@ -1460,6 +1708,7 @@ const styles = {
     marginTop: "14px",
     display: "flex",
     justifyContent: "flex-end",
+    flexWrap: "wrap",
     gap: "8px",
   },
 
@@ -1481,6 +1730,114 @@ const styles = {
     border: "none",
     borderRadius: "9px",
     backgroundColor: "#1f3c88",
+    color: "#ffffff",
+    fontSize: "11px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+
+  aiPreviewButton: {
+    minHeight: "40px",
+    padding: "0 14px",
+    border: "1px solid #1f3c88",
+    borderRadius: "9px",
+    backgroundColor: "#eff6ff",
+    color: "#1f3c88",
+    fontSize: "11px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+
+  aiPreviewStatus: {
+    marginTop: "10px",
+    padding: "11px 13px",
+    backgroundColor: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: "10px",
+    color: "#1e40af",
+    fontSize: "11px",
+    fontWeight: "700",
+  },
+
+  aiPreviewError: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fecaca",
+    color: "#991b1b",
+  },
+
+  aiPreviewPanel: {
+    marginTop: "10px",
+    padding: "13px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "9px",
+    backgroundColor: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: "12px",
+  },
+
+  aiPreviewHeader: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    fontSize: "12px",
+  },
+
+  aiPreviewSummary: {
+    color: "#1f3c88",
+    fontSize: "11px",
+    fontWeight: "800",
+  },
+
+  aiPreviewList: {
+    maxHeight: "180px",
+    overflowY: "auto",
+    display: "grid",
+    gap: "6px",
+  },
+
+  aiPreviewItem: {
+    padding: "8px 9px",
+    display: "flex",
+    alignItems: "center",
+    gap: "9px",
+    backgroundColor: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "8px",
+  },
+
+  aiPreviewIndex: {
+    width: "22px",
+    height: "22px",
+    flexShrink: "0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#f4a261",
+    color: "#ffffff",
+    borderRadius: "50%",
+    fontSize: "9px",
+    fontWeight: "900",
+  },
+
+  aiPreviewItemInfo: {
+    minWidth: "0",
+    display: "flex",
+    flexDirection: "column",
+    gap: "2px",
+    fontSize: "11px",
+  },
+
+  aiPreviewItemMeta: {
+    color: "#64748b",
+    fontSize: "9px",
+  },
+
+  aiPreviewAcceptButton: {
+    minHeight: "40px",
+    border: "none",
+    borderRadius: "9px",
+    backgroundColor: "#059669",
     color: "#ffffff",
     fontSize: "11px",
     fontWeight: "900",
