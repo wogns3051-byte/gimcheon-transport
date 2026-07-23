@@ -383,6 +383,19 @@ function NavigationPage({
                 {currentStop?.address ||
                   "주소 없음"}
               </span>
+
+              {currentStop?.type !==
+                "center" &&
+                currentStop?.scheduledTime && (
+                  <span
+                    style={
+                      styles.scheduledTimeBadge
+                    }
+                  >
+                    {arrivalTimeLabel} 기준{" "}
+                    {currentStop.scheduledTime}
+                  </span>
+                )}
             </div>
           </div>
         </div>
@@ -438,6 +451,26 @@ function NavigationPage({
                       ?.address ||
                       "주소 없음"}
                   </span>
+
+                  {nextInformation
+                    .destination?.type !==
+                    "center" &&
+                    nextInformation
+                      .destination
+                      ?.scheduledTime && (
+                      <span
+                        style={
+                          styles.scheduledTimeBadge
+                        }
+                      >
+                        {arrivalTimeLabel} 기준{" "}
+                        {
+                          nextInformation
+                            .destination
+                            .scheduledTime
+                        }
+                      </span>
+                    )}
                 </div>
               </div>
 
@@ -659,6 +692,19 @@ function NavigationPage({
                       {stop.address ||
                         "주소 없음"}
                     </span>
+
+                    {stop.type !==
+                      "center" &&
+                      stop.scheduledTime && (
+                        <span
+                          style={
+                            styles.scheduledTimeBadge
+                          }
+                        >
+                          {arrivalTimeLabel} 기준{" "}
+                          {stop.scheduledTime}
+                        </span>
+                      )}
 
                     {stop.type !==
                       "center" &&
@@ -1057,6 +1103,14 @@ const styles = {
     fontSize: "10px",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+
+  scheduledTimeBadge: {
+    marginTop: "4px",
+    display: "inline-block",
+    color: "#c2410c",
+    fontSize: "9px",
+    fontWeight: "800",
   },
 
   directionArrow: {

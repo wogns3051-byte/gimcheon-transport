@@ -272,6 +272,20 @@ function DriverHomePage({
                     <span style={styles.routeAddress}>
                       {stop.address || "주소 없음"}
                     </span>
+
+                    {stop.type !== "center" &&
+                      stop.scheduledTime && (
+                        <span
+                          style={
+                            styles.scheduledTimeBadge
+                          }
+                        >
+                          {session === "afternoon"
+                            ? "하차"
+                            : "탑승"}{" "}
+                          기준 {stop.scheduledTime}
+                        </span>
+                      )}
                   </div>
                 </article>
               ))}
@@ -522,6 +536,13 @@ const styles = {
   routeAddress: {
     color: "#64748b",
     fontSize: "10px",
+  },
+
+  scheduledTimeBadge: {
+    marginTop: "2px",
+    color: "#c2410c",
+    fontSize: "9px",
+    fontWeight: "800",
   },
 
   startButton: {

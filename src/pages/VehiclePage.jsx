@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import KakaoMap from "../components/map/kakaoMap";
 
 const DEFAULT_CENTER = {
   id: "center",
@@ -111,6 +112,12 @@ function VehiclePage({
     }, 0);
   }, [routeStops]);
 
+  const fullPathPoints = useMemo(() => {
+    return routeStops.flatMap((stop) =>
+      Array.isArray(stop.pathPoints) ? stop.pathPoints : []
+    );
+  }, [routeStops]);
+
   const updateRoute = (nextRoute) => {
     setRouteStops(nextRoute);
     onRouteChange?.(nextRoute);
@@ -208,6 +215,19 @@ function VehiclePage({
     updateRoute(
       routeStops.filter(
         (stop) => stop.stopId !== stopId
+      )
+    );
+  };
+
+  const handleUpdateScheduledTime = (
+    stopId,
+    scheduledTime
+  ) => {
+    updateRoute(
+      routeStops.map((stop) =>
+        stop.stopId === stopId
+          ? { ...stop, scheduledTime }
+          : stop
       )
     );
   };
@@ -406,6 +426,7 @@ function VehiclePage({
                 stop={stop}
                 index={index}
                 totalCount={routeStops.length}
+                session={session}
                 onMoveUp={() =>
                   handleMoveStop(stop.stopId, "up")
                 }
@@ -414,6 +435,14 @@ function VehiclePage({
                 }
                 onRemove={() =>
                   handleRemoveStop(stop.stopId)
+                }
+                onUpdateScheduledTime={(
+                  value
+                ) =>
+                  handleUpdateScheduledTime(
+                    stop.stopId,
+                    value
+                  )
                 }
               />
             ))}
@@ -432,6 +461,14 @@ function VehiclePage({
             </p>
           </div>
         )}
+      </section>
+
+      <section style={styles.mapSection}>
+        <KakaoMap
+          routeStops={routeStops}
+          fullPathPoints={fullPathPoints}
+          height={420}
+        />
       </section>
 
       <section style={styles.summarySection}>
@@ -624,11 +661,18 @@ function RouteItem({
   stop,
   index,
   totalCount,
+  session,
   onMoveUp,
   onMoveDown,
   onRemove,
+  onUpdateScheduledTime,
 }) {
   const isCenter = stop.type === "center";
+
+  const scheduledTimeLabel =
+    session === "afternoon"
+      ? "하차 기준시간"
+      : "탑승 기준시간";
 
   return (
     <article
@@ -678,6 +722,22 @@ function RouteItem({
         <span style={styles.routeAddress}>
           {stop.address || "주소 없음"}
         </span>
+
+        {!isCenter && (
+          <label style={styles.scheduledTimeLabel}>
+            {scheduledTimeLabel}
+            <input
+              type="time"
+              value={stop.scheduledTime || ""}
+              onChange={(event) =>
+                onUpdateScheduledTime?.(
+                  event.target.value
+                )
+              }
+              style={styles.scheduledTimeInput}
+            />
+          </label>
+        )}
       </div>
 
       <div style={styles.routeActions}>
@@ -950,6 +1010,15 @@ const styles = {
     fontWeight: "700",
   },
 
+  mapSection: {
+    maxWidth: "1180px",
+    margin: "0 auto 20px",
+    borderRadius: "17px",
+    overflow: "hidden",
+    backgroundColor: "#ffffff",
+    border: "1px solid #e2e8f0",
+  },
+
   routeSection: {
     maxWidth: "1180px",
     margin: "0 auto 20px",
@@ -1061,6 +1130,26 @@ const styles = {
     fontSize: "10px",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+
+  scheduledTimeLabel: {
+    marginTop: "6px",
+    display: "flex",
+    alignItems: "center",
+    gap: "7px",
+    color: "#1f3c88",
+    fontSize: "9px",
+    fontWeight: "800",
+  },
+
+  scheduledTimeInput: {
+    height: "28px",
+    padding: "0 8px",
+    boxSizing: "border-box",
+    border: "1px solid #cbd5e1",
+    borderRadius: "7px",
+    fontSize: "11px",
+    color: "#172033",
   },
 
   routeActions: {
