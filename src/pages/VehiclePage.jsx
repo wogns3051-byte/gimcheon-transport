@@ -613,6 +613,17 @@ function VehiclePage({
                       >
                         {person.address || "주소 없음"}
                       </span>
+
+                      {person.usageDurationText && (
+                        <span
+                          style={
+                            styles.personUsageBadge
+                          }
+                        >
+                          이용시간{" "}
+                          {person.usageDurationText}
+                        </span>
+                      )}
                     </div>
                   </label>
                 ))
@@ -1412,6 +1423,13 @@ const styles = {
     fontSize: "10px",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+
+  personUsageBadge: {
+    marginTop: "2px",
+    color: "#1f3c88",
+    fontSize: "9px",
+    fontWeight: "800",
   },
 
   noResult: {

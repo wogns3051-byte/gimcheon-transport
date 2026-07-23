@@ -5,6 +5,12 @@ const HEADER_ALIASES = {
   name: ["성명", "이름", "어르신", "대상자", "수급자"],
   address: ["주소", "도로명주소", "자택주소", "송영주소"],
   phone: ["연락처", "전화번호", "휴대전화", "휴대폰"],
+  usageDuration: [
+    "이용시간",
+    "센터이용시간",
+    "이용시간(시간)",
+    "서비스이용시간",
+  ],
 };
 
 function ExcelUpload({ onDataLoaded }) {
@@ -73,7 +79,7 @@ function ExcelUpload({ onDataLoaded }) {
 
       <div style={styles.info}>
         <strong>{fileName || "선택된 파일 없음"}</strong>
-        <span>필수 열: 성명, 주소</span>
+        <span>필수 열: 성명, 주소 (선택: 이용시간)</span>
       </div>
 
       {message && <div style={styles.message}>{message}</div>}
@@ -82,12 +88,68 @@ function ExcelUpload({ onDataLoaded }) {
 }
 
 function normalizeRow(row, index) {
+  const usageDurationText = findValue(
+    row,
+    HEADER_ALIASES.usageDuration
+  );
+
   return {
     id: `person-${Date.now()}-${index}`,
     name: findValue(row, HEADER_ALIASES.name),
     address: findValue(row, HEADER_ALIASES.address),
     phone: formatPhone(findValue(row, HEADER_ALIASES.phone)),
+    usageDurationText,
+    usageMinutes: parseUsageMinutes(usageDurationText),
   };
+}
+
+function parseUsageMinutes(value) {
+  const text = String(value || "").trim();
+
+  if (!text) {
+    return null;
+  }
+
+  const hourMinuteMatch = text.match(
+    /^(\d+)\s*[:시]\s*(\d+)\s*분?$/
+  );
+
+  if (hourMinuteMatch) {
+    return (
+      Number(hourMinuteMatch[1]) * 60 +
+      Number(hourMinuteMatch[2])
+    );
+  }
+
+  const hourOnlyMatch = text.match(
+    /^(\d+(?:\.\d+)?)\s*시간?$/
+  );
+
+  if (hourOnlyMatch) {
+    return Math.round(
+      Number(hourOnlyMatch[1]) * 60
+    );
+  }
+
+  const minuteOnlyMatch = text.match(
+    /^(\d+)\s*분$/
+  );
+
+  if (minuteOnlyMatch) {
+    return Number(minuteOnlyMatch[1]);
+  }
+
+  const numericOnly = text.match(
+    /^(\d+(?:\.\d+)?)$/
+  );
+
+  if (numericOnly) {
+    return Math.round(
+      Number(numericOnly[1]) * 60
+    );
+  }
+
+  return null;
 }
 
 function findValue(row, aliases) {

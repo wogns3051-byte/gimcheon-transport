@@ -408,25 +408,67 @@ function App() {
     nextRoute
   ) => {
     setRoutesByDateSessionVehicle(
-      (current) => ({
-        ...current,
+      (current) => {
+        const dateRoutes =
+          current[selectedDate] || {};
 
-        [selectedDate]: {
-          ...(current[selectedDate] ||
-            {}),
+        const safeNextRoute = Array.isArray(
+          nextRoute
+        )
+          ? nextRoute
+          : [];
 
-          [selectedSession]: {
-            ...(current[
-              selectedDate
-            ]?.[selectedSession] || {}),
+        const enrichedRoute =
+          selectedSession === "afternoon"
+            ? safeNextRoute.map((stop) => {
+                if (
+                  stop.type !== "person" ||
+                  stop.scheduledTime ||
+                  !Number.isFinite(
+                    stop.usageMinutes
+                  )
+                ) {
+                  return stop;
+                }
 
-            [selectedVehicleId]:
-              Array.isArray(nextRoute)
-                ? nextRoute
-                : [],
+                const morningTime =
+                  findMorningScheduledTime(
+                    dateRoutes,
+                    stop.id
+                  );
+
+                if (!morningTime) {
+                  return stop;
+                }
+
+                return {
+                  ...stop,
+                  scheduledTime:
+                    addMinutesToTime(
+                      morningTime,
+                      stop.usageMinutes
+                    ),
+                };
+              })
+            : safeNextRoute;
+
+        return {
+          ...current,
+
+          [selectedDate]: {
+            ...dateRoutes,
+
+            [selectedSession]: {
+              ...(dateRoutes[
+                selectedSession
+              ] || {}),
+
+              [selectedVehicleId]:
+                enrichedRoute,
+            },
           },
-        },
-      })
+        };
+      }
     );
 
     setCalculationMessage("");
@@ -950,6 +992,74 @@ function createEmptyVehicleRouteMap() {
     }),
     {}
   );
+}
+
+function findMorningScheduledTime(
+  dateRoutes,
+  personId
+) {
+  const morningRoutes =
+    dateRoutes?.morning || {};
+
+  const vehicleIds = Object.keys(
+    morningRoutes
+  );
+
+  for (const vehicleId of vehicleIds) {
+    const stops = Array.isArray(
+      morningRoutes[vehicleId]
+    )
+      ? morningRoutes[vehicleId]
+      : [];
+
+    const match = stops.find(
+      (stop) =>
+        stop.type === "person" &&
+        stop.id === personId &&
+        stop.scheduledTime
+    );
+
+    if (match) {
+      return match.scheduledTime;
+    }
+  }
+
+  return null;
+}
+
+function addMinutesToTime(time, minutes) {
+  const parts = String(time || "")
+    .split(":")
+    .map(Number);
+
+  if (
+    parts.length < 2 ||
+    parts.some((part) => Number.isNaN(part))
+  ) {
+    return null;
+  }
+
+  const [hours, mins] = parts;
+
+  const totalMinutes =
+    (((hours * 60 + mins + minutes) %
+      1440) +
+      1440) %
+    1440;
+
+  const resultHours = Math.floor(
+    totalMinutes / 60
+  );
+
+  const resultMinutes = totalMinutes % 60;
+
+  return `${String(resultHours).padStart(
+    2,
+    "0"
+  )}:${String(resultMinutes).padStart(
+    2,
+    "0"
+  )}`;
 }
 
 function createDriveId() {

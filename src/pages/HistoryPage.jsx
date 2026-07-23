@@ -109,6 +109,111 @@ function HistoryPage({
     );
   }, [filteredHistory]);
 
+  const personUsageSummary = useMemo(() => {
+    if (!selectedDate) {
+      return [];
+    }
+
+    const dayRecords = safeHistory.filter(
+      (record) =>
+        getLocalDateString(
+          record.completedAt || record.date
+        ) === selectedDate
+    );
+
+    const morningRecords = dayRecords.filter(
+      (record) => record.session === "morning"
+    );
+
+    const afternoonRecords = dayRecords.filter(
+      (record) =>
+        record.session === "afternoon"
+    );
+
+    const personMap = new Map();
+
+    morningRecords.forEach((record) => {
+      (
+        record.routeStops || []
+      ).forEach((stop) => {
+        if (
+          stop.type === "person" &&
+          stop.actualArrivalTime
+        ) {
+          const entry =
+            personMap.get(stop.id) || {
+              name: stop.name,
+              boardingTime: null,
+              alightingTime: null,
+            };
+
+          entry.name = stop.name || entry.name;
+          entry.boardingTime =
+            stop.actualArrivalTime;
+
+          personMap.set(stop.id, entry);
+        }
+      });
+    });
+
+    afternoonRecords.forEach((record) => {
+      (
+        record.routeStops || []
+      ).forEach((stop) => {
+        if (
+          stop.type === "person" &&
+          stop.actualArrivalTime
+        ) {
+          const entry =
+            personMap.get(stop.id) || {
+              name: stop.name,
+              boardingTime: null,
+              alightingTime: null,
+            };
+
+          entry.name = stop.name || entry.name;
+          entry.alightingTime =
+            stop.actualArrivalTime;
+
+          personMap.set(stop.id, entry);
+        }
+      });
+    });
+
+    return Array.from(
+      personMap.entries()
+    )
+      .map(([id, entry]) => {
+        const totalMinutes =
+          entry.boardingTime &&
+          entry.alightingTime
+            ? Math.max(
+                0,
+                Math.round(
+                  (new Date(
+                    entry.alightingTime
+                  ).getTime() -
+                    new Date(
+                      entry.boardingTime
+                    ).getTime()) /
+                    60000
+                )
+              )
+            : null;
+
+        return {
+          id,
+          ...entry,
+          totalMinutes,
+        };
+      })
+      .sort((first, second) =>
+        String(first.name || "").localeCompare(
+          String(second.name || "")
+        )
+      );
+  }, [safeHistory, selectedDate]);
+
   const handleDeleteRecord = (record) => {
     const confirmed = window.confirm(
       `${record.sessionLabel || "송영"} · ${
@@ -527,6 +632,129 @@ function HistoryPage({
           value={`${statistics.afternoonCount}회`}
         />
       </section>
+
+      {selectedDate &&
+        personUsageSummary.length > 0 && (
+          <section
+            style={
+              styles.usageSummarySection
+            }
+          >
+            <div style={styles.sectionHeader}>
+              <div>
+                <span
+                  style={
+                    styles.sectionNumber
+                  }
+                >
+                  USAGE
+                </span>
+
+                <h2
+                  style={
+                    styles.sectionTitle
+                  }
+                >
+                  어르신별 이용시간 ({selectedDate})
+                </h2>
+              </div>
+
+              <span
+                style={styles.historyCount}
+              >
+                {personUsageSummary.length}명
+              </span>
+            </div>
+
+            <div
+              style={styles.usageTableWrap}
+            >
+              <table
+                style={styles.usageTable}
+              >
+                <thead>
+                  <tr>
+                    <th
+                      style={
+                        styles.usageTh
+                      }
+                    >
+                      이름
+                    </th>
+                    <th
+                      style={
+                        styles.usageTh
+                      }
+                    >
+                      탑승
+                    </th>
+                    <th
+                      style={
+                        styles.usageTh
+                      }
+                    >
+                      하차
+                    </th>
+                    <th
+                      style={
+                        styles.usageTh
+                      }
+                    >
+                      총이용시간
+                    </th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {personUsageSummary.map(
+                    (person) => (
+                      <tr key={person.id}>
+                        <td
+                          style={
+                            styles.usageTd
+                          }
+                        >
+                          {person.name ||
+                            "이름 없음"}
+                        </td>
+                        <td
+                          style={
+                            styles.usageTd
+                          }
+                        >
+                          {formatClockTime(
+                            person.boardingTime
+                          )}
+                        </td>
+                        <td
+                          style={
+                            styles.usageTd
+                          }
+                        >
+                          {formatClockTime(
+                            person.alightingTime
+                          )}
+                        </td>
+                        <td
+                          style={
+                            styles.usageTd
+                          }
+                        >
+                          {person.totalMinutes !=
+                          null
+                            ? formatDuration(
+                                person.totalMinutes
+                              )
+                            : "-"}
+                        </td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
       <section style={styles.historySection}>
         <div style={styles.sectionHeader}>
@@ -1320,6 +1548,41 @@ const styles = {
     boxSizing: "border-box",
     backgroundColor: "#ffffff",
     borderRadius: "17px",
+  },
+
+  usageSummarySection: {
+    maxWidth: "1180px",
+    margin: "0 auto 16px",
+    padding: "22px",
+    boxSizing: "border-box",
+    backgroundColor: "#ffffff",
+    border: "1px solid #e2e8f0",
+    borderRadius: "17px",
+  },
+
+  usageTableWrap: {
+    overflowX: "auto",
+  },
+
+  usageTable: {
+    width: "100%",
+    borderCollapse: "collapse",
+  },
+
+  usageTh: {
+    padding: "9px 10px",
+    borderBottom: "2px solid #e2e8f0",
+    color: "#64748b",
+    fontSize: "10px",
+    fontWeight: "800",
+    textAlign: "left",
+  },
+
+  usageTd: {
+    padding: "9px 10px",
+    borderBottom: "1px solid #f1f5f9",
+    color: "#172033",
+    fontSize: "11px",
   },
 
   sectionHeader: {
