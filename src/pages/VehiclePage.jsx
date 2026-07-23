@@ -53,6 +53,7 @@ function VehiclePage({
   onRouteChange,
   onCalculateRoute,
   onStartDrive,
+  onUpdateDefaultTime,
 }) {
   const [routeStops, setRouteStops] = useState(
     Array.isArray(initialRoute) ? initialRoute : []
@@ -173,6 +174,10 @@ function VehiclePage({
         type: "person",
         segmentDistance: null,
         segmentDuration: null,
+        scheduledTime:
+          (session === "afternoon"
+            ? person.defaultAlightingTime
+            : person.defaultBoardingTime) || "",
       }));
 
     updateRoute([...routeStops, ...newStops]);
@@ -223,6 +228,10 @@ function VehiclePage({
     stopId,
     scheduledTime
   ) => {
+    const targetStop = routeStops.find(
+      (stop) => stop.stopId === stopId
+    );
+
     updateRoute(
       routeStops.map((stop) =>
         stop.stopId === stopId
@@ -230,6 +239,14 @@ function VehiclePage({
           : stop
       )
     );
+
+    if (targetStop?.id) {
+      onUpdateDefaultTime?.(
+        targetStop.id,
+        session,
+        scheduledTime
+      );
+    }
   };
 
   const handleClearRoute = () => {

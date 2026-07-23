@@ -737,6 +737,50 @@ function App() {
     setCurrentPage("dashboard");
   };
 
+  const handleUpdatePersonDefaultTime = (
+    personId,
+    forSession,
+    scheduledTime
+  ) => {
+    setPeople((current) => {
+      const nextPeople = current.map(
+        (person) =>
+          person.id === personId
+            ? {
+                ...person,
+                ...(forSession ===
+                "afternoon"
+                  ? {
+                      defaultAlightingTime:
+                        scheduledTime,
+                    }
+                  : {
+                      defaultBoardingTime:
+                        scheduledTime,
+                    }),
+              }
+            : person
+      );
+
+      savePeopleCache(
+        nextPeople,
+        uploadFileName
+      );
+
+      savePeopleToCloud(
+        nextPeople,
+        uploadFileName
+      ).catch((error) => {
+        console.error(
+          "어르신 기준시간 클라우드 저장 실패:",
+          error
+        );
+      });
+
+      return nextPeople;
+    });
+  };
+
   const handleUpdateVehicleStaff = (
     vehicleId,
     { driverName, assistantName }
@@ -901,6 +945,9 @@ function App() {
         }
         onStartDrive={
           handleStartDrive
+        }
+        onUpdateDefaultTime={
+          handleUpdatePersonDefaultTime
         }
       />
     );
