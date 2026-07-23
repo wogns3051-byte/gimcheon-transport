@@ -1,5 +1,6 @@
 import {
   doc,
+  getDoc,
   onSnapshot,
   serverTimestamp,
   setDoc,
@@ -70,6 +71,41 @@ export async function saveAssignment({
   );
 
   return { synced: true };
+}
+
+/**
+ * 특정 날짜·세션·차량의 배차 정보를 한 번만 조회합니다.
+ * (사무실에서 다른 날짜로 전환했을 때, 이전에 저장해둔
+ * 배차 내용을 화면에 다시 불러오기 위해 사용합니다)
+ */
+export async function loadAssignmentOnce({
+  dateKey,
+  session,
+  vehicleId,
+}) {
+  if (!isFirebaseConfigured || !db) {
+    return null;
+  }
+
+  if (!dateKey || !session || !vehicleId) {
+    return null;
+  }
+
+  const assignmentId = buildAssignmentId(
+    dateKey,
+    session,
+    vehicleId
+  );
+
+  const snapshot = await getDoc(
+    doc(db, COLLECTION_NAME, assignmentId)
+  );
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return snapshot.data();
 }
 
 /**

@@ -10,9 +10,11 @@ const DEFAULT_VEHICLES = [
 
 function DashboardPage({
   vehicles = DEFAULT_VEHICLES,
+  selectedDate,
   initialSession = "morning",
   selectedVehicleId = "vehicle-1",
   routeStops = [],
+  onDateChange,
   onSessionChange,
   onVehicleSelect,
   onStartPreparation,
@@ -52,7 +54,15 @@ function DashboardPage({
     }, 0);
   }, [safeVehicles]);
 
-  const todayText = useMemo(() => formatKoreanDate(new Date()), []);
+  const safeSelectedDate = useMemo(() => {
+    return selectedDate || getTodayDateKeyLocal();
+  }, [selectedDate]);
+
+  const selectedDateText = useMemo(() => {
+    return formatKoreanDate(
+      new Date(`${safeSelectedDate}T00:00:00`)
+    );
+  }, [safeSelectedDate]);
 
   const handleSessionChange = (session) => {
     setSelectedSession(session);
@@ -81,8 +91,18 @@ function DashboardPage({
         </div>
 
         <div style={styles.dateCard}>
-          <span style={styles.dateLabel}>오늘 운행일</span>
-          <strong style={styles.dateValue}>{todayText}</strong>
+          <span style={styles.dateLabel}>배차 날짜</span>
+          <input
+            type="date"
+            value={safeSelectedDate}
+            onChange={(event) =>
+              onDateChange?.(event.target.value)
+            }
+            style={styles.dateInput}
+          />
+          <span style={styles.dateSubText}>
+            {selectedDateText}
+          </span>
         </div>
 
         <button
@@ -355,6 +375,14 @@ function VehicleCard({
   );
 }
 
+function getTodayDateKeyLocal() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function formatKoreanDate(date) {
   const weekday = ["일", "월", "화", "수", "목", "금", "토"];
   return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${weekday[date.getDay()]})`;
@@ -410,6 +438,19 @@ const styles = {
   },
   dateLabel: { color: "#bfdbfe", fontSize: "11px", fontWeight: "800" },
   dateValue: { color: "#ffffff", fontSize: "17px" },
+  dateInput: {
+    height: "38px",
+    padding: "0 10px",
+    boxSizing: "border-box",
+    border: "1px solid rgba(255,255,255,0.35)",
+    borderRadius: "9px",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    color: "#ffffff",
+    fontSize: "14px",
+    fontWeight: "800",
+    colorScheme: "dark",
+  },
+  dateSubText: { color: "#dbeafe", fontSize: "10px" },
   historyButton: {
     minHeight: "44px",
     padding: "0 16px",

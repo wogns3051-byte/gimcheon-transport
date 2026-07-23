@@ -17,6 +17,7 @@ import {
 } from "./services/driveStorage";
 import {
   getTodayDateKey,
+  loadAssignmentOnce,
   saveAssignment,
 } from "./services/dispatchSync";
 import {
@@ -87,6 +88,9 @@ function App() {
   const [currentPage, setCurrentPage] =
     useState("dashboard");
 
+  const [selectedDate, setSelectedDate] =
+    useState(() => getTodayDateKey());
+
   const [selectedSession, setSelectedSession] =
   
     useState("morning");
@@ -124,12 +128,9 @@ function App() {
   ] = useState("");
 
   const [
-    routesBySessionAndVehicle,
-    setRoutesBySessionAndVehicle,
-  ] = useState({
-    morning: createEmptyVehicleRouteMap(),
-    afternoon: createEmptyVehicleRouteMap(),
-  });
+    routesByDateSessionVehicle,
+    setRoutesByDateSessionVehicle,
+  ] = useState({});
 
   const [currentDrive, setCurrentDrive] =
     useState(null);
@@ -168,10 +169,13 @@ function App() {
   }, [vehicleRoster, selectedVehicleId]);
 
   const currentRoute = useMemo(() => {
-    const sessionRoutes =
-      routesBySessionAndVehicle[
-        selectedSession
+    const dateRoutes =
+      routesByDateSessionVehicle[
+        selectedDate
       ] || {};
+
+    const sessionRoutes =
+      dateRoutes[selectedSession] || {};
 
     return Array.isArray(
       sessionRoutes[selectedVehicleId]
@@ -179,17 +183,21 @@ function App() {
       ? sessionRoutes[selectedVehicleId]
       : [];
   }, [
-    routesBySessionAndVehicle,
+    routesByDateSessionVehicle,
+    selectedDate,
     selectedSession,
     selectedVehicleId,
   ]);
 
   const vehiclesWithAssignedCount =
     useMemo(() => {
-      const sessionRoutes =
-        routesBySessionAndVehicle[
-          selectedSession
+      const dateRoutes =
+        routesByDateSessionVehicle[
+          selectedDate
         ] || {};
+
+      const sessionRoutes =
+        dateRoutes[selectedSession] || {};
 
       return vehicleRoster.map(
         (vehicle) => {
@@ -217,7 +225,8 @@ function App() {
         }
       );
     }, [
-      routesBySessionAndVehicle,
+      routesByDateSessionVehicle,
+      selectedDate,
       selectedSession,
       vehicleRoster,
     ]);
@@ -241,17 +250,11 @@ function App() {
     setCalculationProgress("");
 
     if (safePeople.length === 0) {
-      setRoutesBySessionAndVehicle({
-        morning:
-          createEmptyVehicleRouteMap(),
-
-        afternoon:
-          createEmptyVehicleRouteMap(),
-      });
+      setRoutesByDateSessionVehicle({});
     }
   };
 
-  const handleStartPreparation = ({
+  const handleStartPreparation = async ({
     session,
     vehicleId,
   }) => {
@@ -269,25 +272,95 @@ function App() {
     setCalculationMessage("");
     setCalculationProgress("");
 
+    const alreadyLoaded =
+      routesByDateSessionVehicle[
+        selectedDate
+      ]?.[session]?.[vehicleId];
+
+    if (
+      !Array.isArray(alreadyLoaded) ||
+      alreadyLoaded.length === 0
+    ) {
+      try {
+        const cloudAssignment =
+          await loadAssignmentOnce({
+            dateKey: selectedDate,
+            session,
+            vehicleId,
+          });
+
+        if (
+          cloudAssignment &&
+          Array.isArray(
+            cloudAssignment.routeStops
+          ) &&
+          cloudAssignment.routeStops
+            .length > 0
+        ) {
+          setRoutesByDateSessionVehicle(
+            (current) => ({
+              ...current,
+
+              [selectedDate]: {
+                ...(current[
+                  selectedDate
+                ] || {}),
+
+                [session]: {
+                  ...(current[
+                    selectedDate
+                  ]?.[session] || {}),
+
+                  [vehicleId]:
+                    cloudAssignment.routeStops,
+                },
+              },
+            })
+          );
+
+          setCalculationMessage(
+            `저장된 배차를 불러왔습니다: 총 ${Number(
+              cloudAssignment.totalDistance || 0
+            ).toFixed(
+              2
+            )}km · ${formatDuration(
+              cloudAssignment.totalDuration ||
+                0
+            )}`
+          );
+        }
+      } catch (error) {
+        console.error(
+          "저장된 배차 불러오기 실패:",
+          error
+        );
+      }
+    }
+
     setCurrentPage("vehicle");
   };
 
   const handleRouteChange = (
     nextRoute
   ) => {
-    setRoutesBySessionAndVehicle(
+    setRoutesByDateSessionVehicle(
       (current) => ({
         ...current,
 
-        [selectedSession]: {
-          ...(current[
-            selectedSession
-          ] || {}),
+        [selectedDate]: {
+          ...(current[selectedDate] ||
+            {}),
 
-          [selectedVehicleId]:
-            Array.isArray(nextRoute)
-              ? nextRoute
-              : [],
+          [selectedSession]: {
+            ...(current[
+              selectedDate
+            ]?.[selectedSession] || {}),
+
+            [selectedVehicleId]:
+              Array.isArray(nextRoute)
+                ? nextRoute
+                : [],
+          },
         },
       })
     );
@@ -337,24 +410,31 @@ function App() {
             }
           );
 
-        setRoutesBySessionAndVehicle(
+        setRoutesByDateSessionVehicle(
           (current) => ({
             ...current,
 
-            [selectedSession]: {
+            [selectedDate]: {
               ...(current[
-                selectedSession
+                selectedDate
               ] || {}),
 
-              [selectedVehicleId]:
-                result.routeStops,
+              [selectedSession]: {
+                ...(current[
+                  selectedDate
+                ]?.[selectedSession] ||
+                  {}),
+
+                [selectedVehicleId]:
+                  result.routeStops,
+              },
             },
           })
         );
 
         try {
           await saveAssignment({
-            dateKey: getTodayDateKey(),
+            dateKey: selectedDate,
             session: selectedSession,
             vehicleId: selectedVehicleId,
             vehicleName:
@@ -777,6 +857,7 @@ function App() {
 
       <DashboardPage
     vehicles={vehiclesWithAssignedCount}
+    selectedDate={selectedDate}
     initialSession={selectedSession}
     selectedVehicleId={selectedVehicleId}
 
@@ -784,6 +865,7 @@ function App() {
     calculationMessage={calculationMessage}
     calculationProgress={calculationProgress}
 
+    onDateChange={setSelectedDate}
     onSessionChange={setSelectedSession}
     onVehicleSelect={setSelectedVehicleId}
     onStartPreparation={handleStartPreparation}
