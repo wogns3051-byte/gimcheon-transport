@@ -22,6 +22,7 @@ function NavigationPage({
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedStopIds, setCompletedStopIds] = useState([]);
+  const [skippedStopIds, setSkippedStopIds] = useState([]);
   const [stopArrivalTimes, setStopArrivalTimes] = useState(
     {}
   );
@@ -30,9 +31,10 @@ function NavigationPage({
 
   const isMobile = useIsMobile();
 
-  const safeRouteStops = Array.isArray(routeStops)
-    ? routeStops
-    : [];
+  const [safeRouteStops, setSafeRouteStops] = useState(
+    () =>
+      Array.isArray(routeStops) ? routeStops : []
+  );
 
   const sessionLabel =
     session === "afternoon"
@@ -162,6 +164,40 @@ function NavigationPage({
       `${destination.name} ${arrivalTimeLabel} ${formatClockTime(
         arrivedAt
       )}(으)로 기록되었습니다.`
+    );
+  };
+
+  const handleSkipStop = () => {
+    if (!nextInformation.hasNext) {
+      return;
+    }
+
+    const skippedStop =
+      nextInformation.destination;
+
+    setSafeRouteStops((current) => {
+      const nextArray = [...current];
+      const targetIndex = currentIndex + 1;
+
+      const removed = nextArray.splice(
+        targetIndex,
+        1
+      );
+
+      if (removed.length > 0) {
+        nextArray.push(removed[0]);
+      }
+
+      return nextArray;
+    });
+
+    setSkippedStopIds((current) => [
+      ...current,
+      skippedStop.stopId,
+    ]);
+
+    setMessage(
+      `${skippedStop.name} 방문을 건너뛰었습니다. 마지막 순서로 다시 방문하게 됩니다.`
     );
   };
 
@@ -582,6 +618,26 @@ function NavigationPage({
 
         <button
           type="button"
+          onClick={handleSkipStop}
+          disabled={
+            !nextInformation.hasNext ||
+            nextInformation.nextIndex ===
+              safeRouteStops.length - 1
+          }
+          style={{
+            ...styles.skipButton,
+            ...(!nextInformation.hasNext ||
+            nextInformation.nextIndex ===
+              safeRouteStops.length - 1
+              ? styles.disabledButton
+              : {}),
+          }}
+        >
+          ⏭ 건너뛰기
+        </button>
+
+        <button
+          type="button"
           onClick={handleArrivalComplete}
           disabled={
             !nextInformation.hasNext
@@ -625,6 +681,13 @@ function NavigationPage({
               const isCompleted =
                 index < currentIndex ||
                 completedStopIds.includes(
+                  stop.stopId
+                );
+
+              const isSkipped =
+                !isCompleted &&
+                !isCurrent &&
+                skippedStopIds.includes(
                   stop.stopId
                 );
 
@@ -735,13 +798,18 @@ function NavigationPage({
                       ...(isCompleted
                         ? styles.completedStatus
                         : {}),
+                      ...(isSkipped
+                        ? styles.skippedStatus
+                        : {}),
                     }}
                   >
                     {isCompleted
                       ? "완료"
                       : isCurrent
                         ? "현재"
-                        : "대기"}
+                        : isSkipped
+                          ? "건너뜀"
+                          : "대기"}
                   </span>
                 </article>
               );
@@ -1169,7 +1237,7 @@ const styles = {
     margin: "0 auto 16px",
     display: "grid",
     gridTemplateColumns:
-      "repeat(2, minmax(0, 1fr))",
+      "repeat(3, minmax(0, 1fr))",
     gap: "10px",
   },
 
@@ -1180,6 +1248,17 @@ const styles = {
     backgroundColor: "#f4a261",
     color: "#ffffff",
     fontSize: "15px",
+    fontWeight: "900",
+    cursor: "pointer",
+  },
+
+  skipButton: {
+    minHeight: "58px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "13px",
+    backgroundColor: "#ffffff",
+    color: "#475569",
+    fontSize: "14px",
     fontWeight: "900",
     cursor: "pointer",
   },
@@ -1325,6 +1404,11 @@ const styles = {
   completedStatus: {
     backgroundColor: "#d1fae5",
     color: "#047857",
+  },
+
+  skippedStatus: {
+    backgroundColor: "#fef3c7",
+    color: "#b45309",
   },
 
   footerActions: {
