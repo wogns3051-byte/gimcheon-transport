@@ -25,6 +25,10 @@ import {
   saveVehicleRoster,
 } from "./services/vehicleStorage";
 import {
+  saveVehicleRosterToCloud,
+  subscribeVehicleRoster,
+} from "./services/vehicleSync";
+import {
   saveDriveRecordToCloud,
   subscribeDriveHistory,
 } from "./services/driveHistorySync";
@@ -196,6 +200,39 @@ function App() {
       (error) => {
         console.error(
           "어르신 목록 동기화 실패:",
+          error
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeVehicleRoster(
+      (data) => {
+        if (!data) {
+          return;
+        }
+
+        const nextVehicles = Array.isArray(
+          data.vehicles
+        )
+          ? data.vehicles
+          : [];
+
+        if (nextVehicles.length === 0) {
+          return;
+        }
+
+        saveVehicleRoster(nextVehicles);
+        setVehicleRoster(nextVehicles);
+      },
+      (error) => {
+        console.error(
+          "차량 명단 동기화 실패:",
           error
         );
       }
@@ -719,6 +756,15 @@ function App() {
       );
 
       saveVehicleRoster(nextRoster);
+
+      saveVehicleRosterToCloud(
+        nextRoster
+      ).catch((error) => {
+        console.error(
+          "차량 명단 클라우드 저장 실패:",
+          error
+        );
+      });
 
       return nextRoster;
     });
