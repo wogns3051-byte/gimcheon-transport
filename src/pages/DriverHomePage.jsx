@@ -166,7 +166,7 @@ function DriverHomePage({
 
         <div style={styles.selectGroup}>
           <label style={styles.selectLabel}>
-            내 차량
+            내 이름
           </label>
 
           <select
@@ -181,7 +181,9 @@ function DriverHomePage({
                 key={vehicle.id}
                 value={vehicle.id}
               >
-                {vehicle.name}
+                {vehicle.driverName
+                  ? `${vehicle.driverName} (${vehicle.name})`
+                  : `${vehicle.name} · 이름 미지정`}
               </option>
             ))}
           </select>
