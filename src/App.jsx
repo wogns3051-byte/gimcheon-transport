@@ -28,6 +28,14 @@ import {
   saveDriveRecordToCloud,
   subscribeDriveHistory,
 } from "./services/driveHistorySync";
+import {
+  loadPeopleCache,
+  savePeopleCache,
+} from "./services/peopleStorage";
+import {
+  savePeopleToCloud,
+  subscribePeopleRoster,
+} from "./services/peopleSync";
 
 const APP_MODE_STORAGE_KEY =
   "gimcheon-transport-app-mode";
@@ -104,13 +112,15 @@ function App() {
     () => loadVehicleRoster(INITIAL_VEHICLES)
   );
 
-  const [people, setPeople] = useState([]);
+  const [people, setPeople] = useState(
+    () => loadPeopleCache().people
+  );
   const [routeSummary, setRouteSummary] = useState(null);
 
   const [
     uploadFileName,
     setUploadFileName,
-  ] = useState("");
+  ] = useState(() => loadPeopleCache().fileName);
 
   const [
     isCalculating,
@@ -149,6 +159,43 @@ function App() {
       (error) => {
         console.error(
           "운행기록 동기화 실패:",
+          error
+        );
+      }
+    );
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribePeopleRoster(
+      (data) => {
+        if (!data) {
+          return;
+        }
+
+        const nextPeople = Array.isArray(
+          data.people
+        )
+          ? data.people
+          : [];
+
+        const nextFileName =
+          data.fileName || "";
+
+        savePeopleCache(
+          nextPeople,
+          nextFileName
+        );
+
+        setPeople(nextPeople);
+        setUploadFileName(nextFileName);
+      },
+      (error) => {
+        console.error(
+          "어르신 목록 동기화 실패:",
           error
         );
       }
@@ -248,6 +295,23 @@ function App() {
 
     setCalculationMessage("");
     setCalculationProgress("");
+
+    if (safePeople.length > 0) {
+      savePeopleCache(
+        safePeople,
+        fileName || ""
+      );
+
+      savePeopleToCloud(
+        safePeople,
+        fileName || ""
+      ).catch((error) => {
+        console.error(
+          "어르신 목록 클라우드 저장 실패:",
+          error
+        );
+      });
+    }
 
     if (safePeople.length === 0) {
       setRoutesByDateSessionVehicle({});
